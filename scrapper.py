@@ -15,6 +15,7 @@ mbox_sources = [
 # ── Filters ──────────────────────────────────────────────
 
 blocked_domains = [
+    "ufsa.ufl.edu"
     "ufl.edu",
     "gradescope.com",
     "instructure.com",
@@ -257,6 +258,23 @@ for source in mbox_sources:
         sender = (message["from"] or "").lower()
         date = message["date"] or ""
 
+
+        #filter by year (past 2025)
+        try:
+            email_date = parsedate_to_datetime(date)
+            if email_date.year < 2025:
+                continue
+        except (ValueError, TypeError):
+            continue
+        min_year = int(os.getenv("MIN_YEAR", 0))
+        if min_year:
+            try:
+                email_date = parsedate_to_datetime(date)
+                if email_date.year < min_year:
+                    continue
+            except (ValueError, TypeError):
+                continue
+        #---------------------------------------------------
         
         # whitelist check — only specific senders bypass domain block
         is_whitelisted = any(w in sender for w in whitelisted_senders)
