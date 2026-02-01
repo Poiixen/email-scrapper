@@ -1,3 +1,5 @@
 *.pst
 *.mbox
 .env
+*.csv
+Outlook Data File
