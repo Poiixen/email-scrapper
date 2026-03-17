@@ -67,6 +67,7 @@ blocked_emails = [
     "donotreply@match.indeed.com",
     "info@joinknack.com",
     "learn@itr.mail.codecademy.com",
+    "team@mail.perplexity.ai"
 ]
 
 blocked_subjects = [
@@ -210,7 +211,6 @@ action_keywords = [
     "moved to the next stage",
     "offer letter",
     "we are pleased to offer",
-    "welcome aboard",
 ]
 
 # ── Helper: extract company name from sender ─────────────
