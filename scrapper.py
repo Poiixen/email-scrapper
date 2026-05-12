@@ -15,7 +15,7 @@ mbox_sources = [
 # ── Filters ──────────────────────────────────────────────
 
 blocked_domains = [
-    "ufsa.ufl.edu"
+    "ufsa.ufl.edu",
     "ufl.edu",
     "gradescope.com",
     "instructure.com",
@@ -105,8 +105,11 @@ job_context_keywords = [
 applied_keywords = [
     "application received",
     "application submitted",
+    "application has been submitted",
     "thank you for applying",
     "we received your application",
+    "we've received your application",
+    "your application was received",
     "thanks for applying",
     "application has been received",
     "successfully submitted",
@@ -118,6 +121,7 @@ applied_keywords = [
     "thanks for your interest",
     "we appreciate your interest",
     "your submission has been received",
+    "submission received",
     "application status",
     "you applied",
     "your recent application",
@@ -128,6 +132,21 @@ applied_keywords = [
     "position of interest",
     "candidate portal",
     "candidate profile",
+    "your application is under review",
+    "we are reviewing your application",
+    "we're reviewing your application",
+    "reviewing your application",
+    "we look forward to reviewing",
+    "your application was sent",
+    "application was sent to",
+    "submitted for the role",
+    "your profile has been submitted",
+    "we will review your application",
+    "your application will be reviewed",
+    "keep you updated",
+    "we'll be in touch",
+    "we will be in touch",
+    "be in touch soon",
     "myworkday.com",
     "greenhouse",
     "icims",
@@ -136,12 +155,24 @@ applied_keywords = [
     "jobvite",
     "ashbyhq",
     "hire.lever.co",
+    "workday",
+    "breezy.hr",
+    "bamboohr",
+    "rippling",
+    "jazz.co",
+    "jazzhr",
+    "recruitee",
+    "pinpointhq",
+    "dover.com",
+    "gem.com",
 ]
 
 rejected_keywords = [
     "unfortunately we will not",
     "unfortunately your application",
     "unfortunately we are unable",
+    "unfortunately, we",
+    "unfortunately we",
     "not moving forward",
     "other candidates",
     "position has been filled",
@@ -156,13 +187,25 @@ rejected_keywords = [
     "after careful consideration",
     "competitive applicant pool",
     "we have decided to move forward with",
+    "we are moving forward with other",
+    "moving forward with other applicants",
+    "moving forward with other candidates",
     "not the right fit",
+    "not a fit",
+    "not a match",
     "we will not be proceeding",
     "your application was not selected",
     "we've decided to go with",
+    "we've decided to move",
     "decided to go in a different direction",
+    "decided to move in a different direction",
     "no longer considering",
+    "no longer under consideration",
     "we chose to move forward with another",
+    "chosen another candidate",
+    "selected another candidate",
+    "we went with another",
+    "we have gone with another",
     "did not move forward",
     "we regret",
     "wish you the best in your search",
@@ -172,6 +215,28 @@ rejected_keywords = [
     "encourage you to apply again",
     "keep you in mind for future",
     "we'll keep your resume on file",
+    "we are unable to move forward",
+    "we're unable to move forward",
+    "we're going to pass",
+    "not be proceeding",
+    "have decided not to move forward",
+    "after reviewing your background",
+    "after reviewing your resume",
+    "after reviewing your qualifications",
+    "does not meet our current",
+    "your qualifications do not",
+    "your experience does not",
+    "thank you for your time, however",
+    "thank you for your time, but",
+    "thank you for interviewing",
+    "we have filled this position",
+    "the role has been filled",
+    "this position has been filled",
+    "we have moved forward with",
+    "we've moved forward with",
+    "at this time we",
+    "at this time, we",
+    "unfortunately, at this time",
 ]
 
 action_keywords = [
@@ -248,7 +313,9 @@ for source in mbox_sources:
     mbox = mailbox.mbox(path)
     total = len(mbox)
     applied_count, rejected_count, action_count = 0, 0, 0
-    print(f"\n[{label}] Scanning: {os.path.basename(path)} ({total} emails)")
+    skipped_year = skipped_domain = skipped_email = skipped_subject = skipped_context = 0
+    min_year = int(os.getenv("MIN_YEAR", 2024))
+    print(f"\n[{label}] Scanning: {os.path.basename(path)} ({total} emails, min year: {min_year})")
 
     for i, message in enumerate(mbox, 1):
         if i % 50 == 0 or i == total:
@@ -258,33 +325,26 @@ for source in mbox_sources:
         sender = (message["from"] or "").lower()
         date = message["date"] or ""
 
-
-        #filter by year (past 2025)
         try:
             email_date = parsedate_to_datetime(date)
-            if email_date.year < 2025:
+            if email_date.year < min_year:
+                skipped_year += 1
                 continue
         except (ValueError, TypeError):
+            skipped_year += 1
             continue
-        min_year = int(os.getenv("MIN_YEAR", 0))
-        if min_year:
-            try:
-                email_date = parsedate_to_datetime(date)
-                if email_date.year < min_year:
-                    continue
-            except (ValueError, TypeError):
-                continue
-        #---------------------------------------------------
-        
-        # whitelist check — only specific senders bypass domain block
+
         is_whitelisted = any(w in sender for w in whitelisted_senders)
 
         if not is_whitelisted:
             if any(sender.endswith(domain) or f"@{domain}" in sender for domain in blocked_domains):
+                skipped_domain += 1
                 continue
         if any(blocked in sender for blocked in blocked_emails):
+            skipped_email += 1
             continue
         if any(blocked in subject for blocked in blocked_subjects):
+            skipped_subject += 1
             continue
 
         # extract body — plain text first, HTML fallback
@@ -315,8 +375,8 @@ for source in mbox_sources:
         body = body.lower()
         text = subject + " " + body
 
-        # must look like a job-related email first
         if not any(kw in text for kw in job_context_keywords):
+            skipped_context += 1
             continue
 
         # categorize — rejection first to avoid overlap
@@ -348,9 +408,18 @@ for source in mbox_sources:
                 "body_preview": body[:200].replace("\n", " ").strip(),
             })
 
-    print(f"\n\n  [{label}] Applied: {applied_count}")
-    print(f"  [{label}] Rejected: {rejected_count}")
-    print(f"  [{label}] Action/Next Steps: {action_count}")
+    passed_filters = total - skipped_year - skipped_domain - skipped_email - skipped_subject
+    print(f"\n")
+    print(f"  [{label}] Filter breakdown:")
+    print(f"    Total emails:       {total}")
+    print(f"    Skipped (year):     {skipped_year}")
+    print(f"    Skipped (domain):   {skipped_domain}")
+    print(f"    Skipped (email):    {skipped_email}")
+    print(f"    Skipped (subject):  {skipped_subject}")
+    print(f"    Passed filters:     {passed_filters}")
+    print(f"    No job context:     {skipped_context}")
+    print(f"    Categorized:        {applied_count + rejected_count + action_count}")
+    print(f"  -- Applied: {applied_count}  Rejected: {rejected_count}  Action: {action_count}")
 
 # ── Deduplicate ──────────────────────────────────────────
 # same company + same category = count once
@@ -358,11 +427,12 @@ for source in mbox_sources:
 
 seen = {}
 for r in results:
-    key = (r["company"], r["category"])
+    # deduplicate on company + first 60 chars of subject to allow multiple roles at same company
+    subject_key = r["subject"].lower()[:60].strip()
+    key = (r["company"], r["category"], subject_key)
     if key not in seen:
         seen[key] = r
     else:
-        # keep whichever is more recent (later in the list = more recent from mbox)
         seen[key] = r
 
 deduped = list(seen.values())
@@ -377,17 +447,24 @@ total_applied = sum(1 for r in results if r["category"] == "Applied")
 total_rejected = sum(1 for r in results if r["category"] == "Rejected")
 total_action = sum(1 for r in results if r["category"] == "Action/Next Step")
 
-print(f"\n{'='*40}")
-print(f"  RAW (all emails matched)")
-print(f"    Applied:          {total_applied}")
-print(f"    Rejected:         {total_rejected}")
-print(f"    Action/Next Steps:{total_action}")
-print(f"{'='*40}")
-print(f"  DEDUPLICATED (unique companies)")
+print(f"\n{'='*50}")
+print(f"  REJECTIONS")
+print(f"    Total (raw):      {total_rejected}")
+print(f"    Unique companies: {deduped_rejected}")
+if deduped_applied > 0:
+    rate = deduped_rejected / deduped_applied * 100
+    print(f"    Rejection rate:   {rate:.0f}% of applied")
+print(f"{'='*50}")
+print(f"  FULL SUMMARY (deduplicated by company)")
 print(f"    Applied:          {deduped_applied}")
 print(f"    Rejected:         {deduped_rejected}")
 print(f"    Action/Next Steps:{deduped_action}")
-print(f"{'='*40}")
+print(f"{'-'*50}")
+print(f"  RAW (all matched emails)")
+print(f"    Applied:          {total_applied}")
+print(f"    Rejected:         {total_rejected}")
+print(f"    Action/Next Steps:{total_action}")
+print(f"{'='*50}")
 
 # write full results
 output_file = "results.csv"
